@@ -1,0 +1,34 @@
+
+int equal_slices (slice a, slice b) asm "SDEQ";
+builder store_uintR6(builder b, int x) asm(b x) "6 STUR";
+builder store_sliceF(builder b, slice s) asm(s b) "STSLICE";
+builder store_refR(builder b, cell c) asm(b c) "STREFR";
+
+slice load_data () inline {
+  var ds = get_data().begin_parse();
+  return ds~load_msg_addr();
+}
+
+;; Parse sender address from incoming message
+slice parse_sender_address (cell in_msg_full) inline {
+  var cs = in_msg_full.begin_parse();
+  cs~skip_bits(4);
+  return cs~load_msg_addr();
+}
+
+;; testable
+() recv_internal (int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
+  slice sender_address = parse_sender_address(in_msg_full);
+  slice owner_address = load_data();
+
+  throw_if(34, equal_slices(sender_address, owner_address));
+
+  var msg = begin_cell();
+  msg = msg.store_uintR6(0x10);
+  msg = msg.store_sliceF(owner_address);
+  msg = msg.store_grams(0)
+    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+    .store_sliceF(sender_address);
+  msg = msg.store_refR(begin_cell().store_sliceF(in_msg_body).end_cell());
+  send_raw_message(msg.end_cell(), 64);
+}

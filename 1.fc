@@ -1,0 +1,12 @@
+
+;; testable
+() recv_internal(slice in_msg_body) impure {
+  int n = in_msg_body.preload_uint(32);
+  n += get_data().begin_parse().preload_uint(64);
+  set_data(begin_cell().store_uint(n, 64).end_cell());
+}
+
+;; testable
+int get_total() method_id {
+  return get_data().begin_parse().preload_uint(64);
+}

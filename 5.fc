@@ -1,0 +1,45 @@
+
+int key_selection(int keyA, int keyB) asm "EQUAL TWO ADD";
+int valid_untill_is_invalid?(int v) asm "DUP NOW LESS SWAP NOW 60 ADDCONST GREATER OR";
+
+;; testable
+cell pack_data(int public_key1, int public_key2) method_id {
+  cell data_cell = begin_cell()
+      .store_uint(public_key1, 256)
+      .store_uint(public_key2, 256)
+      .store_dict(new_dict())
+      .end_cell();
+  return data_cell;
+}
+
+() recv_internal(int balance, int msg_value, cell in_msg_full, slice in_msg_body) { }
+
+;; testable
+() recv_external (slice in_msg_body) {
+	slice ds = get_data().begin_parse();
+	(int fst_pk, int snd_pk, cell dict) = (ds~load_uint(256), ds~load_uint(256), ds.preload_dict());
+	int p_key = in_msg_body~load_uint(256);
+  throw_unless(34, (p_key == fst_pk) | (p_key == snd_pk));
+	cell r_cell = in_msg_body~load_ref();
+	int r_hash = cell_hash(r_cell);
+	throw_unless(35, check_signature(r_hash, in_msg_body, p_key));
+	slice r_slice = r_cell.begin_parse();
+	int valid_until = r_slice~load_uint(32);
+  throw_if(36, valid_untill_is_invalid?(valid_until));
+  int x = key_selection(fst_pk, p_key);
+  (slice cs, int f) = dict.udict_get?(256, r_hash);
+  if (f) {
+    x += cs.preload_uint(2);
+    throw_if(37, (x != 3));
+  }
+  accept_message();
+  x~touch();
+  dict~udict_set_builder(256, r_hash, begin_cell().store_uint(x, 2));
+  if (x == 3) {
+    send_raw_message(r_slice~load_ref(), r_slice.preload_uint(8));
+  }
+  ;; тут раньше была очистка словаря от старых записей
+  ;; но она была неправильно написана и слишком прожорлива
+  ;; но понял я это за 3 часа до конца контеста
+  set_data(begin_cell().store_uint(fst_pk, 256).store_uint(snd_pk, 256).store_dict(dict).end_cell());
+}

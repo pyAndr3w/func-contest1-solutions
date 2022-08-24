@@ -1,0 +1,51 @@
+
+int check_bits (slice s, int l) asm "SCHKBITSQ";
+(cell, int) preload_dictQ (slice s) asm "PLDDICTQ" "NULLSWAPIFNOT";
+
+() save_data(cell data_dict) impure inline {
+  set_data(begin_cell().store_dict(data_dict).end_cell());
+}
+
+;; testable
+() recv_internal(int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
+  int op = in_msg_body~load_uint(32);
+  int query_id = in_msg_body~load_uint(64);
+
+  (cell data_dict, _) = get_data().begin_parse().preload_dictQ();
+
+  if (op == 1) {
+    int key = in_msg_body~load_uint(256);
+    throw_unless(34, in_msg_body.check_bits(64)); ;; invalid slice length
+
+    data_dict~udict_set(256, key, in_msg_body);
+    save_data(data_dict);
+    return ();
+  }
+
+  if (op == 2) {
+
+    int key = -1;
+    do {
+      (key, slice cs, int f) = data_dict.udict_get_next?(256, key);
+      if (f) {
+        if (cs.preload_uint(64) < now()) {
+          data_dict~udict_delete?(256, key);
+        }
+      }
+    } until (~ f);
+    save_data(data_dict);
+    return ();
+  }
+  throw(35);
+}
+
+;; testable
+(int, slice) get_key(int key) method_id {
+    (cell data_dict, _) = get_data().begin_parse().preload_dictQ();
+
+    (slice cs, int f) = data_dict.udict_get?(256, key);
+
+    throw_unless(34, f);
+
+    return (cs~load_uint(64), cs);
+}

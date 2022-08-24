@@ -1,0 +1,59 @@
+
+int equal_slices (slice a, slice b) asm "SDEQ";
+builder store_uintR6 (builder b, int x) asm(b x) "6 STUR";
+builder store_uintR32 (builder b, int x) asm(b x) "32 STUR";
+builder store_sliceF (builder b, slice s) asm(s b) "STSLICE";
+(slice, (slice, int)) ~load_msg_addrQ (slice s) asm( -> 1 0 2) "LDMSGADDRQ";
+
+(slice, slice) load_data () inline {
+  var ds = get_data().begin_parse();
+  return (ds~load_msg_addr(), ds~load_msg_addr());
+}
+
+() save_data (slice manager_address, slice memorized_address) impure inline {
+  set_data(begin_cell().store_sliceF(manager_address).store_sliceF(memorized_address).end_cell());
+}
+
+;; Parse sender address from incoming message
+slice parse_sender_address (cell in_msg_full) inline {
+  var cs = in_msg_full.begin_parse();
+  cs~skip_bits(4);
+  return cs~load_msg_addr();
+}
+
+;; testable
+() recv_internal (int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
+  int op = in_msg_body~load_uint(32);
+  int query_id = in_msg_body~load_uint(64);
+
+  slice sender_address = parse_sender_address(in_msg_full);
+  (slice manager_address, slice memorized_address) = load_data();
+  manager_address~touch();
+
+  if ((op == 1) & (equal_slices(sender_address, manager_address))) {
+    (slice new_address, int f) = in_msg_body~load_msg_addrQ();
+    throw_unless(35, f); ;; invalid address
+    save_data(manager_address, new_address);
+    return ();
+  }
+  if (op == 2) {
+    ;; надеюсь это никто читать не будет
+    memorized_address~touch();
+    manager_address~touch();
+    query_id~touch();
+    sender_address~touch();
+    var msg = begin_cell();
+    msg = msg.store_uintR6(0x10);
+    msg = msg.store_sliceF(sender_address);
+    msg = msg.store_grams(0)
+             .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+    ;; боль оптимизации
+    msg = msg.store_uintR32(3);
+    msg = msg.store_uint(query_id, 64);
+    msg = msg.store_sliceF(manager_address);
+    msg = msg.store_sliceF(memorized_address);
+    send_raw_message(msg.end_cell(), 64);
+    return ();
+  }
+  throw_if(34, true); ;; bounce in other situations
+}
